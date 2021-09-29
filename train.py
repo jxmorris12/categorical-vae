@@ -20,7 +20,8 @@ def load_training_data():
     import torchvision
     import torchvision.transforms as transforms
     # TODO implement datasets better
-    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
+    # transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
+    transform = transforms.Compose([transforms.ToTensor()])
     return torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
 
 def categorical_kl_divergence(phi: torch.Tensor) -> torch.Tensor:
@@ -44,6 +45,7 @@ def make_pil_image(img_tensor: torch.Tensor) -> Image:
     return Image.fromarray(random_image)
 
 def main() -> None:
+    wandb_log_interval = 100
     batch_size = 100
     max_steps = 50_000
     num_epochs = 10
@@ -95,7 +97,6 @@ def main() -> None:
             progress_bar.set_description(f'Training | Recon. loss = {reconstruction_loss:.7f} / KL loss = {kl_loss:.7f}')
             loss.backward()
             optimizer.step()
-            if step == 2000: breakpoint()
             # Incrementally anneal temperature and learning rate.
             if step % 1000 == 1:
                 temperature = np.maximum(initial_temperature*np.exp(-temperature_anneal_rate*step), minimum_temperature)
@@ -103,19 +104,23 @@ def main() -> None:
             # phi.shape: torch.Size([256, 30, 10])
             random_image = create_random_image(model, N, K, temperature, step, output_dir)
 
-            wandb.log(
-                {
-                    'kl_loss': kl_loss,
-                    'reconstruction_loss': reconstruction_loss, 
-                    'loss': loss,
-                    'random_image': wandb.Image(random_image),
-                    'x': wandb.Image(make_pil_image(x[0])),
-                    'x_hat': wandb.Image(make_pil_image(x_hat[0])),
-                    'temperature': temperature,
-                    'learning_rate': learning_rate_scheduler.get_lr()
-                }, 
-                step=step
-            )
+            if step % wandb_log_interval == 0:
+                wandb.log(
+                    {
+                        'kl_loss': kl_loss,
+                        'reconstruction_loss': reconstruction_loss, 
+                        'loss': loss,
+                        'random_image': wandb.Image(random_image),
+                        'x': wandb.Image(make_pil_image(x[0])),
+                        'x_hat': wandb.Image(make_pil_image(x_hat[0])),
+                        'temperature': temperature,
+                        'phi_hist': wandb.Histogram(phi.detach().numpy().flatten()),
+                        'x_hat_hist': wandb.Histogram(x_hat.detach().numpy().flatten()),
+                        'x_hist': wandb.Histogram(x.detach().numpy().flatten()),
+                        'learning_rate': learning_rate_scheduler.get_lr()
+                    }, 
+                    step=step
+                )
             step += 1
             progress_bar.update(1)
         
