@@ -61,16 +61,17 @@ class Encoder(torch.nn.Module):
         print('N =',N,'and K =', K)
         self.network = torch.nn.Sequential(
             torch.nn.Conv2d(1, 8, 3, stride=2, padding=1),
-            torch.nn.ReLU(True),
+            torch.nn.ReLU(),
             torch.nn.Conv2d(8, 16, 3, stride=2, padding=1),
             torch.nn.BatchNorm2d(16),
-            torch.nn.ReLU(True),
+            torch.nn.ReLU(),
             torch.nn.Conv2d(16, 32, 3, stride=2, padding=0),
-            torch.nn.ReLU(True),
+            torch.nn.ReLU(),
             torch.nn.Flatten(),
             torch.nn.Linear(3 * 3 * 32, 128),
-            torch.nn.ReLU(True),
-            torch.nn.Linear(128, N*K)   
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, N*K),
+            torch.nn.Sigmoid()
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -82,7 +83,7 @@ class Encoder(torch.nn.Module):
         B = x.shape[0] # store batch dimension
         phi = self.network(x)
         phi = torch.reshape(phi, (B, self.N, self.K))
-        return torch.sigmoid(phi) # TODO ensure sigmoid dim is correct
+        return phi
 
 
 class Decoder(torch.nn.Module):
@@ -95,26 +96,28 @@ class Decoder(torch.nn.Module):
         self.K = K
         self.output_shape = output_shape
         self.network = torch.nn.Sequential(
-            torch.nn.ConvTranspose2d(1, 16, 3, stride=2, output_padding=0),
-            torch.nn.BatchNorm2d(16),
-            torch.nn.ReLU(True),
+            torch.nn.Flatten(),
+            torch.nn.Linear(N*K, 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, 3 * 3 * 32),
+            torch.nn.ReLU(),
+            torch.nn.Unflatten(dim=1, unflattened_size=(32, 3, 3)),
+            torch.nn.ConvTranspose2d(32, 16, 3, stride=2, output_padding=0),
+            torch.nn.BatchNorm2d(16), 
+            torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(16, 8, 3, stride=2, padding=1, output_padding=1),
             torch.nn.BatchNorm2d(8),
-            torch.nn.ReLU(True),
-            torch.nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1)
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1),
+            torch.nn.Sigmoid()
         )
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         """Produces output spectrogram `x` for input `z`."""
         assert len(z.shape) == 3 # [B, N, K]
         assert z.shape[1:] == (self.N, self.K)
-        B = z.shape[0]
-        z = z.reshape((B, 1, self.N, self.K))
-
         x_hat = self.network(z)
-        breakpoint()
-        x_hat = torch.reshape(x_hat, [-1] + list(self.output_shape))
-        return torch.sigmoid(x_hat)
+        return x_hat
 
 
 class BernoulliVAE(torch.nn.Module):
