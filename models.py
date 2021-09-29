@@ -23,14 +23,15 @@ def gumbel_softmax_distribution_sample(logits: torch.Tensor, temperature: float)
     softer (less spiky). Lower temperature will make softmax more spiky and less soft. As
     temperature -> 0, this distribution approaches a categorical distribution.
     """
+    assert len(logits.shape) == 2 # (should be of shape (b, n_classes))
     y = logits + gumbel_distribution_sample(logits.shape)
     return torch.nn.functional.softmax(y / temperature, dim=-1)
 
 def gumbel_softmax(logits: torch.Tensor, temperature: float, hard=False, batch=False) -> torch.Tensor:
     """
-    ST-gumple-softmax
-    input: [*, n_classes]
-    return: flatten --> [*, n_class] an one-hot vector
+    Gumbel-softmax.
+    input: [*, n_classes] (or [b, *, n_classes] for batch)
+    return: flatten --> [*, n_class] a one-hot vector (or b, *, n_classes for batch)
     """
     input_shape = logits.shape
     if batch:
@@ -63,7 +64,7 @@ class Encoder(torch.nn.Module):
         self.N = N
         self.K = K
         self.input_shape = input_shape
-        print('N =',N,'and K =', K)
+        print('N =', N, 'and K =', K)
         self.network = torch.nn.Sequential(
             torch.nn.Conv2d(1, 8, 3, stride=2, padding=1),
             torch.nn.ReLU(),
@@ -111,11 +112,17 @@ class Decoder(torch.nn.Module):
             torch.nn.BatchNorm2d(8),
             torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1),
-            torch.nn.Sigmoid()
+            # torch.nn.Sigmoid()
+            torch.nn.ReLU(),
         )
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
-        """Produces output spectrogram `x` for input `z`."""
+        """Produces output `x_hat` for input `z`.
+        
+        z is a tensor with a batch dimension and, for each item,
+            containing parameters of N categorical distributions,
+            each with K classes
+        """
         assert len(z.shape) == 3 # [B, N, K]
         assert z.shape[1:] == (self.N, self.K)
         x_hat = self.network(z)
