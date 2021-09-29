@@ -77,7 +77,6 @@ class Encoder(torch.nn.Module):
             torch.nn.Linear(3 * 3 * 32, 128),
             torch.nn.ReLU(),
             torch.nn.Linear(128, N*K),
-            torch.nn.Sigmoid()
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -112,8 +111,7 @@ class Decoder(torch.nn.Module):
             torch.nn.BatchNorm2d(8),
             torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1),
-            # torch.nn.Sigmoid()
-            torch.nn.ReLU(),
+            torch.nn.Sigmoid()
         )
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
@@ -129,7 +127,7 @@ class Decoder(torch.nn.Module):
         return x_hat
 
 
-class BernoulliVAE(torch.nn.Module):
+class CategoricalVAE(torch.nn.Module):
     encoder: torch.nn.Module
     decoder: torch.nn.Module
     temperature: float
@@ -150,6 +148,7 @@ class BernoulliVAE(torch.nn.Module):
         """
         phi = self.encoder(x)
         B, N, K = phi.shape
+
         z_given_x = gumbel_softmax(phi, temperature, hard=False, batch=True)
         x_hat = self.decoder(z_given_x)
         return phi, x_hat

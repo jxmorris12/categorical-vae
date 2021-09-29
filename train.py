@@ -11,7 +11,7 @@ import torch.distributions as dist
 import torch.optim as optim
 import torchvision.transforms as transforms
 
-from models import Encoder, Decoder, BernoulliVAE
+from models import Encoder, Decoder, CategoricalVAE
 
 use_wandb = False
 
@@ -39,7 +39,7 @@ def categorical_kl_divergence(phi: torch.Tensor) -> torch.Tensor:
     kl = dist.kl.kl_divergence(q, p) # kl is of shape [B*N]
     return kl.view(B, N)
 
-def create_random_image(model: BernoulliVAE, N: int, K: int, temperature: float, step: int, output_dir: str) -> Image:
+def create_random_image(model: CategoricalVAE, N: int, K: int, temperature: float, step: int, output_dir: str) -> Image:
     random_image = model.generate_random_image(N, K, temperature=temperature)
     pil_image = make_pil_image(random_image)
     pil_image.save(os.path.join(output_dir, f"random_step_{step}.png"))
@@ -73,7 +73,7 @@ def main() -> None:
     image_shape = next(iter(train_dataset))[0][0].shape # [1, 28, 28]
     encoder = Encoder(N, K, image_shape)
     decoder = Decoder(N, K, image_shape)
-    model = BernoulliVAE(encoder, decoder)
+    model = CategoricalVAE(encoder, decoder)
 
     optimizer = optim.SGD(model.parameters(), lr=initial_learning_rate, momentum=0.9)
     learning_rate_scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
@@ -90,9 +90,9 @@ def main() -> None:
             x, labels = data
             phi, x_hat = model(x, temperature) # phi shape: [B, N, K]; x_hat shape: [B, C, Y, X]
             # reconstruction_loss = torch.mean((x - x_hat) ** 2)
-            # reconstruction_loss = torch.nn.functional.binary_cross_entropy(x_hat, x)
+            reconstruction_loss = torch.nn.functional.binary_cross_entropy(x_hat, x)
             # reconstruction_loss = torch.mean(torch.sum((x - x_hat) ** 2, dim=[1,2,3])) # sum over (c, y, x)
-            reconstruction_loss = 0.0
+            # reconstruction_loss = 0.0
             # kl_loss = torch.mean(bernoulli_kl_divergence_canonical(phi))
             # kl_loss = torch.mean(torch.sum(bernoulli_kl_divergence(phi), dim=[1,2])) # sum over (n, k)
             kl_loss = torch.mean(
