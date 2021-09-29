@@ -80,9 +80,9 @@ def main() -> None:
         for data in train_dataset: # x should be a batch of torch.Tensor spectrograms, of shape [B, F, T]
             x, labels = data
             phi, x_hat = model(x, temperature)
-            #reconstruction_loss = torch.mean((x - x_hat) ** 2)
-            reconstruction_loss = torch.nn.functional.binary_cross_entropy(
-                x_hat.view(batch_size, 784), x.view(batch_size, 784)) / batch_size
+            reconstruction_loss = torch.mean((x - x_hat) ** 2)
+            # reconstruction_loss = torch.nn.functional.binary_cross_entropy(
+                # x_hat.view(batch_size, 784), x.view(batch_size, 784)) / batch_size
             # reconstruction_loss = torch.mean(torch.sum((x - x_hat) ** 2, dim=[1,2,3])) # sum over (c, y, x)
             # kl_loss = torch.mean(bernoulli_kl_divergence_canonical(phi))
             # kl_loss = torch.mean(torch.sum(bernoulli_kl_divergence(phi), dim=[1,2])) # sum over (n, k)

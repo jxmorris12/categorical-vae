@@ -26,14 +26,19 @@ def gumbel_softmax_distribution_sample(logits: torch.Tensor, temperature: float)
     y = logits + gumbel_distribution_sample(logits.shape)
     return torch.nn.functional.softmax(y / temperature, dim=-1)
 
-def gumbel_softmax(logits: torch.Tensor, temperature: float, hard=False) -> torch.Tensor:
+def gumbel_softmax(logits: torch.Tensor, temperature: float, hard=False, batch=False) -> torch.Tensor:
     """
     ST-gumple-softmax
     input: [*, n_classes]
     return: flatten --> [*, n_class] an one-hot vector
     """
+    input_shape = logits.shape
+    if batch:
+        assert len(logits.shape) == 3
+        b, n, k = input_shape
+        logits = logits.view(b*n, k)
+    assert len(logits.shape) == 2
     y = gumbel_softmax_distribution_sample(logits, temperature)    
-    input_shape = y.shape
     n_classes = input_shape[-1] # TODO(jxm): check this!
     if hard:
         # Replace y with a one-hot vector, y_hard.
@@ -80,10 +85,7 @@ class Encoder(torch.nn.Module):
         Actually returns theta, the parameters of a bernoulli producing `z`.
         """
         assert len(x.shape) == 4 # x should be of shape [B, C, Y, X]
-        B = x.shape[0] # store batch dimension
-        phi = self.network(x)
-        phi = torch.reshape(phi, (B, self.N, self.K))
-        return phi
+        return self.network(x).view(-1, self.N, self.K)
 
 
 class Decoder(torch.nn.Module):
@@ -140,13 +142,9 @@ class BernoulliVAE(torch.nn.Module):
             x_hat: auto-encoder reconstruction of x
         """
         phi = self.encoder(x)
-        # print('phi.shape:', phi.shape)
-        # z_given_x = torch.nn.functional.gumbel_softmax(phi, tau=1, hard=False)
-        # phi = torch.stack((phi, 1-phi), dim=-1) # split into 2 classes
-        z_given_x = gumbel_softmax(phi, temperature, hard=False)
-        # print('z_given_x.shape', z_given_x.shape)
+        B, N, K = phi.shape
+        z_given_x = gumbel_softmax(phi, temperature, hard=False, batch=True)
         x_hat = self.decoder(z_given_x)
-        # print('x_hat.shape:', x_hat.shape)
         return phi, x_hat
     
     def generate_random_image(self, N: int, K: int, temperature: float = 1.0) -> torch.Tensor:
@@ -154,7 +152,7 @@ class BernoulliVAE(torch.nn.Module):
         batch_size = 1
         random_phi = torch.randn((batch_size, N, K))
         # TODO what temperature here? hard=True or no?
-        z_given_x = gumbel_softmax(random_phi, temperature, hard=False)
+        z_given_x = gumbel_softmax(random_phi, temperature, hard=False, batch=True)
         with torch.no_grad():
             random_image = self.decoder(z_given_x)[0] # take first of batch (one image)
         return random_image
