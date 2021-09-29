@@ -6,6 +6,7 @@ import tqdm
 import wandb
 from PIL import Image
 
+import torch.distributions as dist
 import torch.optim as optim
 
 from models import Encoder, Decoder, BernoulliVAE
@@ -22,20 +23,14 @@ def load_training_data():
     transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
     return torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
 
-
-def bernoulli_kl_divergence(phi: torch.Tensor) -> torch.Tensor:
-    """bernoulli KL loss:
-        $$\ell = (1 - \Phi)\log{\dfrac{1-\Phi}{0.5}} + \Phi \log{\dfrac{\Phi}{0.5}}$$
-    """
-    z_eq_0_term = (1 - phi) * (torch.log(1 - phi) - math.log(0.5))
-    z_eq_1_term = phi * (torch.log(phi) - math.log(0.5))
-    return (z_eq_0_term + z_eq_1_term)
-
-def bernoulli_kl_divergence_canonical(phi: torch.Tensor) -> torch.Tensor:
-    import torch.distributions as dist
-    q = dist.Bernoulli(phi)
-    p = dist.Bernoulli(0.5)
-    return dist.kl.kl_divergence(q, p)
+def categorical_kl_divergence(phi: torch.Tensor) -> torch.Tensor:
+    # phi is logits of shape [B, N, K] where B is batch, N is number of categorical distributions, K is number of classes
+    B, N, K = phi.shape
+    phi = phi.view(B*N, K)
+    q = dist.Categorical(logits=phi)
+    p = dist.Categorical(probs=torch.full((B*N, K), 1.0/K)) # uniform bunch of K-class categorical distributions
+    kl = dist.kl.kl_divergence(q, p)
+    return kl.view(B, N)
 
 def create_random_image(model: BernoulliVAE, N: int, K: int, temperature: float, step: int, output_dir: str) -> Image:
     random_image = model.generate_random_image(N, K, temperature=temperature)
@@ -52,7 +47,7 @@ def main() -> None:
     batch_size = 100
     max_steps = 50_000
     num_epochs = 10
-    learning_rate = 0.001
+    initial_learning_rate = 0.001
     initial_temperature = 1.0
     minimum_temperature = 0.5
     temperature_anneal_rate = 0.00003
@@ -71,7 +66,7 @@ def main() -> None:
     decoder = Decoder(N, K, image_shape)
     model = BernoulliVAE(encoder, decoder)
 
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=initial_learning_rate, momentum=0.9)
     learning_rate_scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
     step = 0
     temperature = initial_temperature
@@ -85,16 +80,22 @@ def main() -> None:
         for data in train_dataset: # x should be a batch of torch.Tensor spectrograms, of shape [B, F, T]
             x, labels = data
             phi, x_hat = model(x, temperature)
-            # reconstruction_loss = torch.mean(torch.sum((x - x_hat) ** 2, dim=[1,2]))
-            reconstruction_loss = torch.mean((x - x_hat) ** 2)
+            #reconstruction_loss = torch.mean((x - x_hat) ** 2)
+            reconstruction_loss = torch.nn.functional.binary_cross_entropy(
+                x_hat.view(batch_size, 784), x.view(batch_size, 784)) / batch_size
+            # reconstruction_loss = torch.mean(torch.sum((x - x_hat) ** 2, dim=[1,2,3])) # sum over (c, y, x)
             # kl_loss = torch.mean(bernoulli_kl_divergence_canonical(phi))
-            kl_loss = torch.mean(bernoulli_kl_divergence(phi))
+            # kl_loss = torch.mean(torch.sum(bernoulli_kl_divergence(phi), dim=[1,2])) # sum over (n, k)
+            kl_loss = torch.mean(
+                torch.sum(categorical_kl_divergence(phi), dim=1)
+            )
             loss = kl_loss + reconstruction_loss
             # loss = kl_loss
             # loss = recon_loss
             progress_bar.set_description(f'Training | Recon. loss = {reconstruction_loss:.7f} / KL loss = {kl_loss:.7f}')
             loss.backward()
             optimizer.step()
+            if step == 2000: breakpoint()
             # Incrementally anneal temperature and learning rate.
             if step % 1000 == 1:
                 temperature = np.maximum(initial_temperature*np.exp(-temperature_anneal_rate*step), minimum_temperature)
@@ -111,7 +112,7 @@ def main() -> None:
                     'x': wandb.Image(make_pil_image(x[0])),
                     'x_hat': wandb.Image(make_pil_image(x_hat[0])),
                     'temperature': temperature,
-                    'learning_rate': learning_rate
+                    'learning_rate': learning_rate_scheduler.get_lr()
                 }, 
                 step=step
             )
