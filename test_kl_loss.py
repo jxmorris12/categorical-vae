@@ -2,6 +2,7 @@
 import torch
 import tqdm
 import torch.optim as optim
+import torch.distributions as dist
 
 from train import load_training_data
 
@@ -30,11 +31,7 @@ def main():
 
     model = torch.nn.Sequential(
         torch.nn.Flatten(),
-        torch.nn.Linear(28*28, 512),
-        torch.nn.ReLU(),
-        torch.nn.Linear(512, 256),
-        torch.nn.ReLU(),
-        torch.nn.Linear(256, N*K)
+        torch.nn.Linear(28*28, N*K)
     )
     optimizer = optim.SGD(model.parameters(), lr=initial_learning_rate, momentum=0.0)
 
