@@ -3,7 +3,16 @@ import torch
 import tqdm
 import torch.optim as optim
 
-from train import load_training_data, categorical_kl_divergence
+from train import load_training_data
+
+def categorical_kl_divergence(phi: torch.Tensor) -> torch.Tensor:
+    # phi is logits of shape [B, N, K] where B is batch, N is number of categorical distributions, K is number of classes
+    B, N, K = phi.shape
+    phi = phi.view(B*N, K)
+    q = dist.Categorical(logits=phi)
+    p = dist.Categorical(probs=torch.full((B*N, K), 1.0/K)) # uniform bunch of K-class categorical distributions
+    kl = dist.kl.kl_divergence(q, p) # kl is of shape [B*N]
+    return kl.view(B, N)
 
 def main():
     N = 30
