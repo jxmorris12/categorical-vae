@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 
 from models import Encoder, Decoder, CategoricalVAE
 
-use_wandb = False
+use_wandb = True
 
 if use_wandb:
     wandb_run = wandb.init(
@@ -53,7 +53,7 @@ def make_pil_image(img_tensor: torch.Tensor) -> Image:
 def main() -> None:
     # TODO rewrite to use NamedTensor?
     # baseline: https://github.com/harvardnlp/namedtensor/blob/master/examples/vae.py
-    wandb_log_interval = 100
+    wandb_log_interval = 10
     batch_size = 100
     max_steps = 50_000
     initial_learning_rate = 0.001
@@ -75,7 +75,11 @@ def main() -> None:
     decoder = Decoder(N, K, image_shape)
     model = CategoricalVAE(encoder, decoder)
 
-    optimizer = optim.SGD(model.parameters(), lr=initial_learning_rate, momentum=0.9)
+    if use_wandb:
+        wandb.watch(model, log_freq=wandb_log_interval)
+
+    parameters = list(model.parameters())
+    optimizer = optim.SGD(parameters, lr=initial_learning_rate, momentum=0.0)
     learning_rate_scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
     step = 0
     temperature = initial_temperature
@@ -90,9 +94,12 @@ def main() -> None:
             x, labels = data
             phi, x_hat = model(x, temperature) # phi shape: [B, N, K]; x_hat shape: [B, C, Y, X]
             # reconstruction_loss = torch.mean((x - x_hat) ** 2)
-            reconstruction_loss = torch.nn.functional.binary_cross_entropy(x_hat, x)
+            # reconstruction_loss = torch.nn.functional.binary_cross_entropy(x_hat, x)
             # reconstruction_loss = torch.mean(torch.sum((x - x_hat) ** 2, dim=[1,2,3])) # sum over (c, y, x)
-            # reconstruction_loss = 0.0
+            reconstruction_loss = 0.0
+            #reconstruction_loss = (
+            #    torch.nn.functional.binary_cross_entropy(x_hat, x, reduction="none")
+            #    .view(x.shape[0], -1).sum(-1).mean())
             # kl_loss = torch.mean(bernoulli_kl_divergence_canonical(phi))
             # kl_loss = torch.mean(torch.sum(bernoulli_kl_divergence(phi), dim=[1,2])) # sum over (n, k)
             kl_loss = torch.mean(
@@ -100,6 +107,7 @@ def main() -> None:
             )
             loss = kl_loss + reconstruction_loss
             progress_bar.set_description(f'Training | Recon. loss = {reconstruction_loss:.7f} / KL loss = {kl_loss:.7f}')
+            gradnorm = torch.nn.utils.clip_grad_norm_(parameters, 1)
             loss.backward()
             optimizer.step()
 
@@ -109,7 +117,7 @@ def main() -> None:
                 learning_rate_scheduler.step() # should multiply learning rate by 0.9
 
             if step % wandb_log_interval == 0:
-                if use_wandb:
+                if use_wandb and False:
                     random_image = create_random_image(model, N, K, temperature, step, output_dir)
                     wandb.log(
                         {
@@ -130,6 +138,7 @@ def main() -> None:
                     )
             step += 1
             progress_bar.update(1)
+            break
         
 
 if __name__ == '__main__': main()
