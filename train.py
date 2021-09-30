@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 
 from models import Encoder, Decoder, CategoricalVAE
 
-use_wandb = True
+use_wandb = False
 
 if use_wandb:
     wandb_run = wandb.init(
@@ -138,7 +138,6 @@ def main() -> None:
                     )
             step += 1
             progress_bar.update(1)
-            break
         
 
 if __name__ == '__main__': main()

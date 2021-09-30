@@ -59,25 +59,35 @@ class Encoder(torch.nn.Module):
     input_shape: torch.Size
     N: int # number of categorical distributions
     K: int # number of classes
-    def __init__(self, N: int, K: int, input_shape: torch.Size):
+    def __init__(self, N: int, K: int, input_shape: torch.Size, convolutional: bool = False):
         super().__init__()
         self.N = N
         self.K = K
         self.input_shape = input_shape
         print('N =', N, 'and K =', K)
-        self.network = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 8, 3, stride=2, padding=1),
-            torch.nn.ReLU(),
-            torch.nn.Conv2d(8, 16, 3, stride=2, padding=1),
-            torch.nn.BatchNorm2d(16),
-            torch.nn.ReLU(),
-            torch.nn.Conv2d(16, 32, 3, stride=2, padding=0),
-            torch.nn.ReLU(),
-            torch.nn.Flatten(),
-            torch.nn.Linear(3 * 3 * 32, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, N*K),
-        )
+        if convolutional:
+            self.network = torch.nn.Sequential(
+                torch.nn.Conv2d(1, 8, 3, stride=2, padding=1),
+                torch.nn.ReLU(),
+                torch.nn.Conv2d(8, 16, 3, stride=2, padding=1),
+                torch.nn.BatchNorm2d(16),
+                torch.nn.ReLU(),
+                torch.nn.Conv2d(16, 32, 3, stride=2, padding=0),
+                torch.nn.ReLU(),
+                torch.nn.Flatten(),
+                torch.nn.Linear(3 * 3 * 32, 128),
+                torch.nn.ReLU(),
+                torch.nn.Linear(128, N*K),
+            )
+        else:
+            self.network = torch.nn.Sequential(
+                torch.nn.Flatten(),
+                torch.nn.Linear(28*28, 512),
+                torch.nn.ReLU(),
+                torch.nn.Linear(512, 256),
+                torch.nn.ReLU(),
+                torch.nn.Linear(256, N*K)
+            )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Produces encoding `z` for input spectrogram `x`.
@@ -92,27 +102,38 @@ class Decoder(torch.nn.Module):
     output_shape: torch.Size
     N: int # number of categorical distributions
     K: int # number of classes
-    def __init__(self, N: int, K: int, output_shape: torch.Size):
+    def __init__(self, N: int, K: int, output_shape: torch.Size, convolutional: bool = False):
         super().__init__()
         self.N = N
         self.K = K
         self.output_shape = output_shape
-        self.network = torch.nn.Sequential(
-            torch.nn.Flatten(),
-            torch.nn.Linear(N*K, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, 3 * 3 * 32),
-            torch.nn.ReLU(),
-            torch.nn.Unflatten(dim=1, unflattened_size=(32, 3, 3)),
-            torch.nn.ConvTranspose2d(32, 16, 3, stride=2, output_padding=0),
-            torch.nn.BatchNorm2d(16), 
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(16, 8, 3, stride=2, padding=1, output_padding=1),
-            torch.nn.BatchNorm2d(8),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1),
-            torch.nn.Sigmoid()
-        )
+        if convolutional:
+            self.network = torch.nn.Sequential(
+                torch.nn.Flatten(),
+                torch.nn.Linear(N*K, 128),
+                torch.nn.ReLU(),
+                torch.nn.Linear(128, 3 * 3 * 32),
+                torch.nn.ReLU(),
+                torch.nn.Unflatten(dim=1, unflattened_size=(32, 3, 3)),
+                torch.nn.ConvTranspose2d(32, 16, 3, stride=2, output_padding=0),
+                torch.nn.BatchNorm2d(16), 
+                torch.nn.ReLU(),
+                torch.nn.ConvTranspose2d(16, 8, 3, stride=2, padding=1, output_padding=1),
+                torch.nn.BatchNorm2d(8),
+                torch.nn.ReLU(),
+                torch.nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1),
+                torch.nn.Sigmoid()
+            )
+        else:
+            self.network = torch.nn.Sequential(
+                torch.nn.Flatten(),
+                torch.nn.Linear(N*K, 256),
+                torch.nn.ReLU(),
+                torch.nn.Linear(256, 512),
+                torch.nn.ReLU(),
+                torch.nn.Linear(512, 28*28),
+                torch.nn.Sigmoid()
+            )
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         """Produces output `x_hat` for input `z`.
@@ -124,7 +145,7 @@ class Decoder(torch.nn.Module):
         assert len(z.shape) == 3 # [B, N, K]
         assert z.shape[1:] == (self.N, self.K)
         x_hat = self.network(z)
-        return x_hat
+        return x_hat.view((-1,) + self.output_shape)
 
 
 class CategoricalVAE(torch.nn.Module):
