@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 
 from models import Encoder, Decoder, CategoricalVAE
 
-use_wandb = False
+use_wandb = True
 
 if use_wandb:
     wandb_run = wandb.init(
@@ -96,10 +96,9 @@ def main() -> None:
             # reconstruction_loss = torch.mean((x - x_hat) ** 2)
             # reconstruction_loss = torch.nn.functional.binary_cross_entropy(x_hat, x)
             # reconstruction_loss = torch.mean(torch.sum((x - x_hat) ** 2, dim=[1,2,3])) # sum over (c, y, x)
-            reconstruction_loss = 0.0
-            #reconstruction_loss = (
-            #    torch.nn.functional.binary_cross_entropy(x_hat, x, reduction="none")
-            #    .view(x.shape[0], -1).sum(-1).mean())
+            # reconstruction_loss = 0.0
+            reconstruction_loss = (
+               torch.nn.functional.binary_cross_entropy(x_hat, x, reduction="none").sum()) / x.shape[0]
             # kl_loss = torch.mean(bernoulli_kl_divergence_canonical(phi))
             # kl_loss = torch.mean(torch.sum(bernoulli_kl_divergence(phi), dim=[1,2])) # sum over (n, k)
             kl_loss = torch.mean(
@@ -117,7 +116,7 @@ def main() -> None:
                 learning_rate_scheduler.step() # should multiply learning rate by 0.9
 
             if step % wandb_log_interval == 0:
-                if use_wandb and False:
+                if use_wandb:
                     random_image = create_random_image(model, N, K, temperature, step, output_dir)
                     wandb.log(
                         {
@@ -128,10 +127,10 @@ def main() -> None:
                             'x': wandb.Image(make_pil_image(x[0])),
                             'x_hat': wandb.Image(make_pil_image(x_hat[0])),
                             'temperature': temperature,
-                            'phi_hist': wandb.Histogram(phi.exp().detach().numpy().flatten()),
-                            'phi_sum_hist': wandb.Histogram(phi.exp().sum(axis=2).detach().numpy().flatten()),
-                            'x_hat_hist': wandb.Histogram(x_hat.detach().numpy().flatten()),
-                            'x_hist': wandb.Histogram(x.detach().numpy().flatten()),
+                            #'phi_hist': wandb.Histogram(phi.exp().detach().numpy().flatten()),
+                            #'phi_sum_hist': wandb.Histogram(phi.exp().sum(axis=2).detach().numpy().flatten()),
+                            #'x_hat_hist': wandb.Histogram(x_hat.detach().numpy().flatten()),
+                            #'x_hist': wandb.Histogram(x.detach().numpy().flatten()),
                             'learning_rate': learning_rate_scheduler.get_lr()
                         }, 
                         step=step

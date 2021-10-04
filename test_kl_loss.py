@@ -10,16 +10,16 @@ def categorical_kl_divergence(phi: torch.Tensor) -> torch.Tensor:
     # phi is logits of shape [B, N, K] where B is batch, N is number of categorical distributions, K is number of classes
     B, N, K = phi.shape
     phi = phi.view(B*N, K)
-    q = dist.Categorical(logits=phi)
+    q = dist.Categorical(logits=(phi+1e-20))
     p = dist.Categorical(probs=torch.full((B*N, K), 1.0/K)) # uniform bunch of K-class categorical distributions
     kl = dist.kl.kl_divergence(q, p) # kl is of shape [B*N]
     return kl.view(B, N)
 
 def main():
-    N = 30
-    K = 10
+    N = 1
+    K = 2
     max_steps = 2000
-    initial_learning_rate = 0.001
+    initial_learning_rate = 1e-5
     batch_size = 100
     training_images = load_training_data()
 
@@ -50,7 +50,9 @@ def main():
             kl_loss.backward()
             optimizer.step()
             
-            progress_bar.set_description(f'Training | KL loss = {kl_loss:.7f}')
+            if step == 1: breakpoint()
+            if step == 400: breakpoint()
+            progress_bar.set_description(f'Training | KL loss = {kl_loss:.7f} / phi.mean() = {phi.exp().mean()}')
             progress_bar.update(1)
             kl_loss = torch.mean(
                     torch.sum(categorical_kl_divergence(phi), dim=1)

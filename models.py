@@ -59,7 +59,7 @@ class Encoder(torch.nn.Module):
     input_shape: torch.Size
     N: int # number of categorical distributions
     K: int # number of classes
-    def __init__(self, N: int, K: int, input_shape: torch.Size, convolutional: bool = False):
+    def __init__(self, N: int, K: int, input_shape: torch.Size, convolutional: bool = True):
         super().__init__()
         self.N = N
         self.K = K
@@ -102,7 +102,7 @@ class Decoder(torch.nn.Module):
     output_shape: torch.Size
     N: int # number of categorical distributions
     K: int # number of classes
-    def __init__(self, N: int, K: int, output_shape: torch.Size, convolutional: bool = False):
+    def __init__(self, N: int, K: int, output_shape: torch.Size, convolutional: bool = True):
         super().__init__()
         self.N = N
         self.K = K
@@ -159,9 +159,9 @@ class CategoricalVAE(torch.nn.Module):
         self.temperature = 1.0
 
     def forward(self, x: torch.Tensor, temperature: float = 1.0) -> Tuple[torch.Tensor, torch.Tensor]:
-        """VAE forward pass. Encoder produces phi, the parameters of a bernoulli distribution.
-        Samples from bernoulli(phi) to produce a z. Passes z through encoder p(x|z) to get x_hat,
-        a reconstruction of x.
+        """VAE forward pass. Encoder produces phi, the parameters of a categorical distribution.
+        Samples from categorical(phi) using gumbel softmax to produce a z. Passes z through encoder p(x|z)
+        to get x_hat, a reconstruction of x.
 
         Returns:
             phi: parameters of categorical distribution that produced z
@@ -173,6 +173,41 @@ class CategoricalVAE(torch.nn.Module):
         z_given_x = gumbel_softmax(phi, temperature, hard=False, batch=True)
         x_hat = self.decoder(z_given_x)
         return phi, x_hat
+    
+    def generate_random_image(self, N: int, K: int, temperature: float = 1.0) -> torch.Tensor:
+        # logging: and generate random image
+        batch_size = 1
+        random_phi = torch.randn((batch_size, N, K))
+        # TODO what temperature here? hard=True or no?
+        z_given_x = gumbel_softmax(random_phi, temperature, hard=False, batch=True)
+        with torch.no_grad():
+            random_image = self.decoder(z_given_x)[0] # take first of batch (one image)
+        return random_image
+
+
+class GaussianVAE(torch.nn.Module):
+    encoder: torch.nn.Module
+    decoder: torch.nn.Module
+    temperature: float
+    def __init__(self, encoder: torch.nn.Module, decoder: torch.nn.Module):
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """VAE forward pass. Encoder produces mu and sigma, the parameters of a Gaussian distribution.
+        Samples from gaussian(mu, sigma) using reparameterization to produce a z. Passes z 
+        through encoder p(x|z) to get x_hat, a reconstruction of x.
+
+        Returns:
+            (mu, sigma): parameters of Gaussian distribution that produced z
+            x_hat: auto-encoder reconstruction of x
+        """
+        intermediate = self.encoder(x)
+        mu, sigma = torch.split(intermediate, dim=-1)
+        z_given_x = GaussianNormal() * sigma + mu
+        x_hat = self.decoder(z_given_x)
+        return (mu, sigma), x_hat
     
     def generate_random_image(self, N: int, K: int, temperature: float = 1.0) -> torch.Tensor:
         # logging: and generate random image
