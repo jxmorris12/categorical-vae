@@ -1,6 +1,8 @@
 # PyTorch Categorical VAE with Gumbel-Softmax
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1nGoz0mOA85X04xzn-EfudDTv2_Co1qM1?usp=sharing]
+<a href="ttps://colab.research.google.com/drive/1nGoz0mOA85X04xzn-EfudDTv2_Co1qM1">
+    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Colab Link" height="18">
+</a>
 
 ![discrete_vae_flowchart](images/discrete_vae_flowchart.png)
 
