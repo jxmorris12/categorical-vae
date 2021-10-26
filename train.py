@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 
 from models import Encoder, Decoder, CategoricalVAE
 
-use_wandb = True
+use_wandb = False
 
 if use_wandb:
     wandb_run = wandb.init(
@@ -54,6 +54,7 @@ def main() -> None:
     # TODO rewrite to use NamedTensor?
     # baseline: https://github.com/harvardnlp/namedtensor/blob/master/examples/vae.py
     wandb_log_interval = 10
+    model_save_interval = 5_000
     batch_size = 100
     max_steps = 50_000
     initial_learning_rate = 0.001
@@ -93,14 +94,8 @@ def main() -> None:
         for data in train_dataset: # x should be a batch of torch.Tensor spectrograms, of shape [B, F, T]
             x, labels = data
             phi, x_hat = model(x, temperature) # phi shape: [B, N, K]; x_hat shape: [B, C, Y, X]
-            # reconstruction_loss = torch.mean((x - x_hat) ** 2)
-            # reconstruction_loss = torch.nn.functional.binary_cross_entropy(x_hat, x)
-            # reconstruction_loss = torch.mean(torch.sum((x - x_hat) ** 2, dim=[1,2,3])) # sum over (c, y, x)
-            # reconstruction_loss = 0.0
             reconstruction_loss = (
                torch.nn.functional.binary_cross_entropy(x_hat, x, reduction="none").sum()) / x.shape[0]
-            # kl_loss = torch.mean(bernoulli_kl_divergence_canonical(phi))
-            # kl_loss = torch.mean(torch.sum(bernoulli_kl_divergence(phi), dim=[1,2])) # sum over (n, k)
             kl_loss = torch.mean(
                 torch.sum(categorical_kl_divergence(phi), dim=1)
             )
@@ -135,6 +130,9 @@ def main() -> None:
                         }, 
                         step=step
                     )
+            if (step+1) % model_save_interval == 0:
+                torch.save(model.state_dict(), os.path.join(output_dir, f'save_{step}.pt'))
+
             step += 1
             progress_bar.update(1)
         
