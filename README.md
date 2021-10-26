@@ -1,5 +1,7 @@
 # PyTorch Categorical VAE with Gumbel-Softmax
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1nGoz0mOA85X04xzn-EfudDTv2_Co1qM1?usp=sharing]
+
 ![discrete_vae_flowchart](images/discrete_vae_flowchart.png)
 
 This repository contains code for training a variational autoencoder with categorical latents on the MNIST dataset. It's meant to accompany this blog post: https://jxmo.io/posts/variational-autoencoders
