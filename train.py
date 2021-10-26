@@ -91,7 +91,7 @@ def main() -> None:
 
     progress_bar = tqdm.tqdm(total=max_steps, desc='Training')
     while step < max_steps:
-        for data in train_dataset: # x should be a batch of torch.Tensor spectrograms, of shape [B, F, T]
+        for data in train_dataset: # x should be a batch of torch.Tensor inputs, of shape [B, F, T]
             x, labels = data
             phi, x_hat = model(x, temperature) # phi shape: [B, N, K]; x_hat shape: [B, C, Y, X]
             reconstruction_loss = (

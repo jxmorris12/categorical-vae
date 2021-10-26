@@ -27,7 +27,7 @@ def gumbel_softmax_distribution_sample(logits: torch.Tensor, temperature: float)
     y = logits + gumbel_distribution_sample(logits.shape)
     return torch.nn.functional.softmax(y / temperature, dim=-1)
 
-def gumbel_softmax(logits: torch.Tensor, temperature: float, hard=False, batch=False) -> torch.Tensor:
+def gumbel_softmax(logits: torch.Tensor, temperature: float, batch=False) -> torch.Tensor:
     """
     Gumbel-softmax.
     input: [*, n_classes] (or [b, *, n_classes] for batch)
@@ -40,19 +40,8 @@ def gumbel_softmax(logits: torch.Tensor, temperature: float, hard=False, batch=F
         logits = logits.view(b*n, k)
     assert len(logits.shape) == 2
     y = gumbel_softmax_distribution_sample(logits, temperature)    
-    n_classes = input_shape[-1] # TODO(jxm): check this!
-    if hard:
-        # Replace y with a one-hot vector, y_hard.
-        _, max_indices = y.max(dim=-1)
-        y_hard = torch.zeros_like(y).view(-1, input_shape[-1])
-        y_hard.scatter_(1, max_indices.view(-1, 1), 1)
-        y_hard = y_hard.view(input_shape)
-        # This line basically says: give y_hard the gradients of y,
-        # but retain the value of y_hard.
-        y_hard = (y_hard - y).detach() + y
-        return y_hard.view(input_shape)
-    else:
-        return y.view(input_shape)
+    n_classes = input_shape[-1]
+    return y.view(input_shape)
 
 class Encoder(torch.nn.Module):
     cnn: torch.nn.Module
@@ -90,9 +79,9 @@ class Encoder(torch.nn.Module):
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Produces encoding `z` for input spectrogram `x`.
+        """Produces encoding `z` for input `x`.
         
-        Actually returns theta, the parameters of a bernoulli producing `z`.
+        Actually returns theta, the parameters of a distribution producing `z`.
         """
         assert len(x.shape) == 4 # x should be of shape [B, C, Y, X]
         return self.network(x).view(-1, self.N, self.K)
@@ -170,7 +159,7 @@ class CategoricalVAE(torch.nn.Module):
         phi = self.encoder(x)
         B, N, K = phi.shape
 
-        z_given_x = gumbel_softmax(phi, temperature, hard=False, batch=True)
+        z_given_x = gumbel_softmax(phi, temperature, batch=True)
         x_hat = self.decoder(z_given_x)
         return phi, x_hat
     
@@ -178,8 +167,7 @@ class CategoricalVAE(torch.nn.Module):
         # logging: and generate random image
         batch_size = 1
         random_phi = torch.randn((batch_size, N, K))
-        # TODO what temperature here? hard=True or no?
-        z_given_x = gumbel_softmax(random_phi, temperature, hard=False, batch=True)
+        z_given_x = gumbel_softmax(random_phi, temperature, batch=True)
         with torch.no_grad():
             random_image = self.decoder(z_given_x)[0] # take first of batch (one image)
         return random_image
